@@ -87,16 +87,13 @@ func (t *sqliteTxStorage) CreateIssueImport(ctx context.Context, issue *types.Is
 		}
 	}
 
-	// Ensure parent exists for hierarchical IDs (importer should have ensured / resurrected).
-	if isHierarchical, parentID := IsHierarchicalID(issue.ID); isHierarchical {
-		var parentCount int
-		if err := t.conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM issues WHERE id = ?`, parentID).Scan(&parentCount); err != nil {
-			return fmt.Errorf("failed to check parent existence: %w", err)
-		}
-		if parentCount == 0 {
-			return fmt.Errorf("parent issue %s does not exist", parentID)
-		}
-	}
+	// NOTE: Parent existence for hierarchical IDs is handled by the importer
+	// which sorts issues by depth (parents before children) and handles orphan
+	// policies (allow/skip/strict/resurrect). We don't validate here because:
+	// 1. With OrphanHandling=allow, orphans are intentionally permitted
+	// 2. Within a transaction, parents inserted earlier are visible to children
+	// 3. Redundant validation here would break fresh clone imports where the
+	//    importer sorts by depth but this check sees an empty DB
 
 	// Insert issue (strict)
 	if err := insertIssueStrict(ctx, t.conn, issue); err != nil {
